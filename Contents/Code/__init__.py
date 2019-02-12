@@ -1042,7 +1042,36 @@ def ApiGetChannelInfo(uid):
     return ret
 
 
-def ApiRequest(method, params, data=None, rmethod=None):
+def ApiRequestErrorOccurred(response, suppressErrorMessage=False):
+    errorOccurred = False
+    message = ""
+    try:
+        if type(response) is str:
+            response = JSON.ObjectFromString(response)
+
+        if 'error' in response:
+            if 'errors' in response['error']:
+                for error in response['error']['errors']:
+                    message += 'ApiRequest error: %s\n' % error
+            else:
+                message = 'ApiRequest error response empty!'
+
+            errorOccurred = True
+    except:
+        if type(response) is str:
+            message = 'Could not decode ApiRequest response: %s' % response
+        else:
+            message = 'Could not decode ApiRequest response'
+
+        errorOccurred = True
+
+    if errorOccurred and not suppressErrorMessage:
+        Log.Error(message)
+
+    return errorOccurred
+
+
+def ApiRequest(method, params, data=None, rmethod=None, suppressErrorMessage=False):
     if not CheckToken():
         return None
 
@@ -1063,7 +1092,10 @@ def ApiRequest(method, params, data=None, rmethod=None):
             cacheTime=0 if is_change else CACHE_1HOUR
         ).content
     except Exception as e:
-        Log.Debug(str(e))
+        if not suppressErrorMessage:
+            Log.Error('Exception: %s' % str(e))
+            if hasattr(e, 'content'):
+                ApiRequestErrorOccurred(e.content)
         return None
 
     if is_change:
@@ -1075,7 +1107,7 @@ def ApiRequest(method, params, data=None, rmethod=None):
     except:
         return None
 
-    if 'error' in res:
+    if ApiRequestErrorOccurred(res, suppressErrorMessage):
         return None
 
     return res
