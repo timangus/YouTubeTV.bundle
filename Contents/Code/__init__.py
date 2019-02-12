@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright (c) 2014, KOL
+# Copyright (c) 2019, Tim Angus
 # All rights reserved.
 
 # Redistribution and use in source and binary forms, with or without
@@ -441,7 +442,7 @@ def Channel(oid, title):
         title2=u'%s' % title
     )
 
-    # Add standart menu
+    # Add standard menu
     FillChannelInfo(oc, oid)
     if oid == 'me':
         oc.add(DirectoryObject(
