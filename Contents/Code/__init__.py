@@ -652,6 +652,11 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
 
     for item in res['items']:
         snippet = item['snippet']
+
+        # Skip upcoming videos; we only want things we can actually watch
+        if 'liveBroadcastContent' in snippet and snippet['liveBroadcastContent'] == 'upcoming':
+            continue
+
         duration = Video.ParseDuration(
             item['contentDetails']['duration']
         )*1000
