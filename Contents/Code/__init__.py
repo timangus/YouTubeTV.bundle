@@ -657,10 +657,20 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
         if 'liveBroadcastContent' in snippet and snippet['liveBroadcastContent'] == 'upcoming':
             continue
 
-        duration = Video.ParseDuration(
-            item['contentDetails']['duration']
-        )*1000
-        summary = u'%s\n%s' % (snippet['channelTitle'], snippet['description'])
+        seconds = Video.ParseDuration(item['contentDetails']['duration'])
+        milliseconds = seconds * 1000
+
+        if Prefs['duration_in_description']:
+            minutes, seconds = divmod(seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            if hours > 0:
+                durationString = u'[%d:%02d:%02d] ' % (hours, minutes, seconds)
+            else:
+                durationString = u'[%d:%02d] ' % (minutes, seconds)
+        else:
+            durationString = ''
+
+        summary = u'%s%s\n%s' % (durationString, snippet['channelTitle'], snippet['description'])
 
         if extended:
             pl_item_id = pl_map[item['id']] if item['id'] in pl_map else None
@@ -669,7 +679,7 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
                 title=u'%s' % snippet['title'],
                 summary=summary,
                 thumb=GetThumbFromSnippet(snippet),
-                duration=duration,
+                duration=milliseconds,
             ))
         else:
             oc.add(VideoClipObject(
@@ -678,7 +688,7 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
                 title=u'%s' % snippet['title'] if title is None else title,
                 summary=summary,
                 thumb=GetThumbFromSnippet(snippet),
-                duration=duration,
+                duration=milliseconds,
                 originally_available_at=Datetime.ParseDate(
                     snippet['publishedAt']
                 ).date(),

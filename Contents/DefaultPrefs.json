@@ -44,6 +44,12 @@
         "default": "Relevance",
     },
     {
+        "id": "duration_in_description",
+        "type": "bool",
+        "label": "Show duration in description",
+        "default": "true",
+    },
+    {
         "id": "region",
         "type": "enum",
         "label": "Preferred Region for Videos and channels",
