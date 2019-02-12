@@ -158,7 +158,6 @@ def MainMenu(complete=False, offline=False):
         title=u'%s' % L('My channel'),
         thumb=ICONS['account'],
     ))
-    FillChannelInfo(oc, 'me')
     oc.add(InputDirectoryObject(
         key=Callback(
             Search,
