@@ -28,6 +28,8 @@
 from urllib import urlencode
 from time import time
 from updater import Updater
+from datetime import datetime, timedelta
+from threading import Thread, Lock
 
 Video = SharedCodeService.video
 
@@ -66,15 +68,8 @@ ICONS = {
 }
 
 YT_EDITABLE = {
-    'watchLater': L('watchLater'),
     'likes': L('I like this'),
     'favorites': L('Add to favorites'),
-}
-
-YT_FEEDS = {
-    '_SB': {'u': 'feed/subscriptions', 'title': L('My Subscriptions')},
-    'HL': {'u': 'feed/history', 'title': L('watchHistory')},
-    'WL': {'u': 'playlist', 'title': L('watchLater')},
 }
 
 ###############################################################################
@@ -133,8 +128,8 @@ def MainMenu(complete=False, offline=False):
     Updater(PREFIX+'/update', oc)
 
     oc.add(DirectoryObject(
-        key=Callback(Feed, oid='_SB'),
-        title=u'%s' % L('My Subscriptions'),
+        key=Callback(SubscriptionFeed, title=L('Subscription Feed')),
+        title=u'%s' % L('My Subscription Feed'),
         thumb=ICONS['subscriptions'],
     ))
     oc.add(DirectoryObject(
@@ -162,7 +157,7 @@ def MainMenu(complete=False, offline=False):
         title=u'%s' % L('My channel'),
         thumb=ICONS['account'],
     ))
-    FillChannelInfo(oc, 'me', ('watchLater', 'watchHistory', 'likes'))
+    FillChannelInfo(oc, 'me')
     oc.add(InputDirectoryObject(
         key=Callback(
             Search,
@@ -175,117 +170,157 @@ def MainMenu(complete=False, offline=False):
 
     return AddSubscriptions(oc, uid='me')
 
+subscription_feed_thread = None
+# Guard against concurrent accesses to Data store; you'd hope this is
+# already thread safe, but locking it can't hurt
+subscription_feed_mutex = Lock()
 
-@route(PREFIX + '/feed')
-def Feed(oid, offset=None):
+def RecentSubscriptionVideoIds(duration = timedelta(weeks = 1)):
     if not CheckToken():
         return NoContents()
 
-    params = {
-        'access_token': Dict['access_token'],
-        'ajax': 1,
-    }
+    channelIds = []
+    offset = None
 
-    if offset:
-        path = 'feed'
-        params['action_continuation'] = 1
-        params.update(JSON.ObjectFromString(offset))
-    else:
-        path = YT_FEEDS[oid]['u']
+    while True:
+        res = ApiRequest('subscriptions', ApiGetParams(
+            uid='me',
+            limit='50', # Max allowed by API
+            offset=offset
+        ))
 
-    if YT_FEEDS[oid]['u'] == 'playlist':
-        params['list'] = oid
-        path = YT_FEEDS[oid]['u']
-
-    try:
-        res = JSON.ObjectFromString(HTTP.Request(
-            'https://m.youtube.com/%s?%s' % (path, urlencode(params)),
-            headers={
-                'User-Agent': Video.USER_AGENT
-            }
-        ).content[4:])['content']
-    except:
-        return NoContents()
-
-    if 'single_column_browse_results' in res:
-        for item in res['single_column_browse_results']['tabs']:
-            if 'selected' in item and item['selected'] is True:
-                res = item['content']
-                break
-    elif 'section_list' in res and len(res['section_list']['contents']):
-        for item in res['section_list']['contents']:
-            if item['item_type'] == 'playlist_video_list':
-                res = item
-                break
-            elif 'contents' in item:
-                for subitem in item['contents']:
-                    if subitem['item_type'] == 'playlist_video_list':
-                        res = subitem
-                        break
-                else:
-                    continue
-                break
-
-    elif 'continuation_contents' in res:
-        res = res['continuation_contents']
-    else:
-        return NoContents()
-
-    if not 'contents' in res or not len(res['contents']):
-        return NoContents()
-
-    ids = []
-
-    if 'continuations' in res and len(res['continuations']):
-        continuations = res['continuations']
-    else:
-        continuations = None
-
-    for item in res['contents']:
-        if 'continuations' in item and len(item['continuations']):
-            continuations = item['continuations']
-
-        vid = Video.GetFeedVid(item)
-        if vid is not None:
-            ids.append(vid)
-            continue
-
-        for subitem in item['contents']:
-            vid = Video.GetFeedVid(subitem)
-            if vid is not None:
-                ids.append(vid)
-
-    if not len(ids):
-        return NoContents()
-
-    oc = ObjectContainer(title2=u'%s' % YT_FEEDS[oid]['title'])
-    chunk_size = 50
-    extended = Prefs['my_subscriptions_extened'] if oid == '_SB' else Prefs['playlists_extened']
-    [AddVideos(
-        oc,
-        ApiGetVideos(ids=ids[i:i + chunk_size]),
-        extended=extended
-    ) for i in xrange(0, len(ids), chunk_size)]
-
-    if continuations is None:
-        return oc
-
-    # Add offset
-    for item in continuations:
-        if item['item_type'] == 'next_continuation_data':
-            oc.add(NextPageObject(
-                key=Callback(
-                    Feed,
-                    oid=oid,
-                    offset=JSON.StringFromObject({
-                        'itct': item['click_tracking_params'],
-                        'ctoken': item['continuation'],
-                    }),
-                ),
-                title=u'%s' % L('Next page'),
-                thumb=ICONS['next']
-            ))
+        if not res:
             break
+
+        if 'items' not in res:
+            break
+
+        offset = None
+
+        for item in res['items']:
+            item = item['snippet']
+            channelId = item['resourceId']['channelId']
+            channelIds.append(channelId)
+
+        if 'nextPageToken' in res:
+            offset = res['nextPageToken']
+
+        if offset is None:
+            break
+
+    now = datetime.utcnow()
+    now = now.replace(hour = 0, minute = 0, second = 0, microsecond = 0)
+    cutoff = now - duration
+    rfc3339Cutoff = cutoff.isoformat('T') + 'Z'
+
+    videos = []
+    # FIXME: this could potentially be sped up by threading the requests,
+    # or some kind of async http shenanigans
+    # You could also potentially avoid re-requesting videos that have
+    # been saved in the Data store, but that's only really going to help
+    # if the subscribed channels publish more than 50 videos per the
+    # requested duration, and that seems pretty unlikely
+    for channelId in channelIds:
+        offset = None
+
+        while True:
+            res = ApiRequest('search', ApiGetParams(
+                channelId=channelId,
+                type='video',
+                order='date',
+                limit='50', # Max allowed by API
+                publishedAfter=rfc3339Cutoff,
+                offset=offset
+            ))
+
+            if not res:
+                break
+
+            if 'items' not in res:
+                break
+
+            offset = None
+
+            for item in res['items']:
+                videoId = item['id']['videoId']
+                date = item['snippet']['publishedAt']
+                videos.append((videoId, date))
+
+            if 'nextPageToken' in res:
+                offset = res['nextPageToken']
+
+            if offset is None:
+                break
+
+    videos.sort(reverse = True, key = lambda tup: tup[1])
+    videoIds = [tup[0] for tup in videos]
+
+    subscription_feed_mutex.acquire()
+    try:
+        Data.SaveObject('subscription_feed', videoIds)
+    finally:
+        subscription_feed_mutex.release()
+
+    return videoIds
+
+@route(PREFIX + '/subscriptionfeed')
+def SubscriptionFeed(title, offset = 0):
+    global subscription_feed_thread
+    global subscription_feed_mutex
+
+    oc = ObjectContainer(title2=u'%s' % title)
+
+    if subscription_feed_thread is not None and not subscription_feed_thread.isAlive():
+        # There was a previous update, but it has finished
+        subscription_feed_thread = None
+
+    if subscription_feed_thread is None:
+        # Start an update
+        subscription_feed_thread = Thread(target=RecentSubscriptionVideoIds)
+        subscription_feed_thread.start()
+
+        # Give the update a little time to complete, before carrying on
+        subscription_feed_thread.join(5.0)
+
+    # If the thread is still alive, it means the join timed out...
+    if subscription_feed_thread.isAlive():
+        # ...and we should let the user know that the update is still in progress
+        oc.header = u'%s' % L('Update In Progress')
+        oc.message = u'%s' % L('The subscription feed is currently being updated, ' \
+            'please wait and refresh for the latest videos.')
+        # Some clients don't show the message, so use the title too
+        oc.title2 = u'%s (Updating...)' % title
+
+    videoIds = []
+    subscription_feed_mutex.acquire()
+    try:
+        if Data.Exists('subscription_feed'):
+            videoIds = Data.LoadObject('subscription_feed')
+    finally:
+        subscription_feed_mutex.release()
+
+    if videoIds:
+        offset = int(offset)
+        perPage = int(Prefs['items_per_page'])
+        pagelimit = offset + perPage
+        pagelimit = min(pagelimit, len(videoIds))
+
+        [AddVideos(
+            oc,
+            ApiGetVideos(ids=videoIds[i:i + perPage]),
+            extended=Prefs['my_subscriptions_extened']
+        ) for i in xrange(offset, pagelimit, perPage)]
+
+        if pagelimit < len(videoIds):
+            oc.add(NextPageObject(
+                key = Callback(
+                    SubscriptionFeed,
+                    title=title,
+                    offset=pagelimit
+                ),
+                title = u'%s' % L('Next page'),
+                thumb = ICONS['next']
+            ))
 
     return oc
 
@@ -537,7 +572,7 @@ def Playlists(uid, title, offset=None):
     )
 
     if not offset and uid == 'me':
-        FillChannelInfo(oc, uid, ('watchLater', 'likes', 'favorites'))
+        FillChannelInfo(oc, uid)
         oc.add(InputDirectoryObject(
             key=Callback(
                 Search,
@@ -553,9 +588,6 @@ def Playlists(uid, title, offset=None):
 
 @route(PREFIX + '/playlist')
 def Playlist(oid, title, can_edit=False, offset=None):
-
-    if oid in YT_FEEDS:
-        return Feed(oid)
 
     res = ApiRequest('playlistItems', ApiGetParams(
         part='contentDetails',
@@ -700,7 +732,7 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
     return oc
 
 
-def FillChannelInfo(oc, uid, pl_types=None):
+def FillChannelInfo(oc, uid):
     info = ApiGetChannelInfo(uid)
 
     if info['banner'] is not None:
@@ -709,18 +741,9 @@ def FillChannelInfo(oc, uid, pl_types=None):
     if not info['playlists']:
         return oc
 
-    if pl_types is not None:
-        items = dict(filter(
-            lambda v: v[0] in pl_types,
-            info['playlists'].items()
-        ))
-    else:
-        items = info['playlists']
+    items = info['playlists']
 
-    for key in sorted(
-        items,
-        key=lambda v: v != 'uploads'
-    ):
+    for key in sorted(items):
         oc.add(DirectoryObject(
             key=Callback(
                 Playlist,
