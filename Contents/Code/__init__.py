@@ -1033,7 +1033,18 @@ def ApiGetChannelInfo(uid):
 
     if res and res['items']:
         res = res['items'][0]
-        ret['playlists'] = res['contentDetails']['relatedPlaylists']
+        relatedPlaylists = res['contentDetails']['relatedPlaylists']
+
+        for key in relatedPlaylists:
+            # Check that the API actually returns the playlist without error
+            res = ApiRequest('playlistItems', ApiGetParams(
+                part='contentDetails',
+                playlistId=relatedPlaylists[key]
+            ),
+            suppressErrorMessage=True)
+            if res and len(res['items']):
+                ret['playlists'][key] = relatedPlaylists[key]
+
         try:
             ret['banner'] = res['brandingSettings']['image']['bannerTvHighImageUrl']
         except:
