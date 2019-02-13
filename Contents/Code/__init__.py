@@ -693,12 +693,7 @@ def AddVideos(oc, res, title=None, extended=False, pl_map={}):
         milliseconds = seconds * 1000
 
         if Prefs['duration_in_description']:
-            minutes, seconds = divmod(seconds, 60)
-            hours, minutes = divmod(minutes, 60)
-            if hours > 0:
-                durationString = u'[%d:%02d:%02d] ' % (hours, minutes, seconds)
-            else:
-                durationString = u'[%d:%02d] ' % (minutes, seconds)
+            durationString = u'[%s] ' % SecondsToString(seconds)
         else:
             durationString = ''
 
@@ -998,6 +993,14 @@ def Authorization():
 ###############################################################################
 # Common
 ###############################################################################
+
+def SecondsToString(seconds):
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return u'%d:%02d:%02d' % (hours, minutes, seconds)
+
+    return u'%d:%02d' % (minutes, seconds)
 
 def NoContents():
     return ObjectContainer(
