@@ -73,6 +73,8 @@ YT_EDITABLE = {
     'favorites': L('Add to favorites'),
 }
 
+YT_MIN_REFRESH_INTERVAL_SECONDS = 300
+
 ###############################################################################
 # Init
 ###############################################################################
@@ -274,10 +276,24 @@ def SubscriptionFeed(title, offset = 0):
         # There was a previous update, but it has finished
         subscription_feed_thread = None
 
-    if subscription_feed_thread is None:
+    timeSinceRefreshStarted = 0
+    lastRefreshTime = 0
+    now = int(time())
+
+    if 'last_refresh_time' in Dict:
+        lastRefreshTime = Dict['last_refresh_time']
+
+    if lastRefreshTime < now:
+        timeSinceRefreshStarted = now - lastRefreshTime
+
+    if subscription_feed_thread is None and \
+            (timeSinceRefreshStarted > YT_MIN_REFRESH_INTERVAL_SECONDS or \
+            not Data.Exists('subscription_feed')):
         # Start an update
         subscription_feed_thread = Thread(target=RecentSubscriptionVideoIds)
         subscription_feed_thread.start()
+        lastRefreshTime = now
+        Dict['last_refresh_time'] = lastRefreshTime
 
         # Give the update a little time to complete, before carrying on
         subscription_feed_thread.join(5.0)
