@@ -266,11 +266,14 @@ def RecentSubscriptionVideoIds(duration = timedelta(weeks = 1)):
     return videoIds
 
 @route(PREFIX + '/subscriptionfeed')
-def SubscriptionFeed(title, offset = 0):
+def SubscriptionFeed(title, offset=0, refresh=0):
     global subscription_feed_thread
     global subscription_feed_mutex
 
-    oc = ObjectContainer(title2=u'%s' % title)
+    refresh=bool(int(refresh))
+    oc = ObjectContainer(title2=u'%s' % title,
+        # These members don't appear to actually work, but maybe some clients support them
+        no_history=refresh, replace_parent=refresh)
 
     if subscription_feed_thread is not None and not subscription_feed_thread.isAlive():
         # There was a previous update, but it has finished
@@ -298,14 +301,20 @@ def SubscriptionFeed(title, offset = 0):
         # Give the update a little time to complete, before carrying on
         subscription_feed_thread.join(5.0)
 
-    # If the thread is still alive, it means the join timed out...
-    if subscription_feed_thread.isAlive():
-        # ...and we should let the user know that the update is still in progress
-        oc.header = u'%s' % L('Update In Progress')
-        oc.message = u'%s' % L('The subscription feed is currently being updated, ' \
-            'please wait and refresh for the latest videos.')
-        # Some clients don't show the message, so use the title too
-        oc.title2 = u'%s (Updating...)' % title
+    timeSinceRefreshStarted = int(time()) - lastRefreshTime
+
+    # If the thread is still alive, it means an update is in progress...
+    if subscription_feed_thread is not None and subscription_feed_thread.isAlive():
+        # ...and we should let the user know about it
+        oc.add(DirectoryObject(
+            key=Callback(SubscriptionFeed,
+                title=L('Subscription Feed'),
+                refresh=int(refresh) + 1),
+            title=u'%s%s%s' % (L('Updating ('),
+                SecondsToString(timeSinceRefreshStarted),
+                L(')')),
+            thumb=ICONS['watchHistory']
+        ))
 
     videoIds = []
     subscription_feed_mutex.acquire()
