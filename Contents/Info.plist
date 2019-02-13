@@ -14,10 +14,10 @@
 	<key>CFBundleSignature</key>
 	<string>hook</string>
 	<key>CFBundleVersion</key>
-	<string>4.12</string>
+	<string>4.13</string>
 
 	<key>PlexPluginVersionUrl</key>
-	<string>https://api.github.com/repos/Helza/YouTubeTV.bundle/releases/latest</string>
+	<string>https://rebrand.ly/youtubetv</string>
 	<key>PlexPluginCodePolicy</key>
 	<string>Elevated</string>
 
