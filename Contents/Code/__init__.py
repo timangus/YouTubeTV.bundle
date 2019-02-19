@@ -177,9 +177,9 @@ subscription_feed_thread = None
 # already thread safe, but locking it can't hurt
 subscription_feed_mutex = Lock()
 
-def RecentSubscriptionVideoIds(duration = timedelta(weeks = 1)):
+def UpdateSubscriptionFeed(duration = timedelta(weeks = 1)):
     if not CheckToken():
-        return NoContents()
+        return
 
     channelIds = []
     offset = None
@@ -263,8 +263,6 @@ def RecentSubscriptionVideoIds(duration = timedelta(weeks = 1)):
     finally:
         subscription_feed_mutex.release()
 
-    return videoIds
-
 @route(PREFIX + '/subscriptionfeed')
 def SubscriptionFeed(title, offset=0, refresh=0):
     global subscription_feed_thread
@@ -293,7 +291,7 @@ def SubscriptionFeed(title, offset=0, refresh=0):
             (timeSinceRefreshStarted > YT_MIN_REFRESH_INTERVAL_SECONDS or \
             not Data.Exists('subscription_feed')):
         # Start an update
-        subscription_feed_thread = Thread(target=RecentSubscriptionVideoIds)
+        subscription_feed_thread = Thread(target=UpdateSubscriptionFeed)
         subscription_feed_thread.start()
         lastRefreshTime = now
         Dict['last_refresh_time'] = lastRefreshTime
