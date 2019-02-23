@@ -170,6 +170,10 @@ def MainMenu(complete=False, offline=False):
         thumb=ICONS['search']
     ))
 
+    # Do a feed update when the main menu is shown, since it'll
+    # usually be what the user is going to do anyway
+    UpdateSubscriptionFeed()
+
     return AddSubscriptions(oc, uid='me')
 
 subscription_feed_thread = None
