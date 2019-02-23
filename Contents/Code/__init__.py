@@ -177,8 +177,13 @@ subscription_feed_thread = None
 # already thread safe, but locking it can't hurt
 subscription_feed_mutex = Lock()
 
+# Strictly speaking this should probably be locked, but it's
+# unlikely to actually matter in the real world
+subscription_feed_update_progress = 0
+
 def UpdateSubscriptionFeedWorker(duration = timedelta(weeks = 1)):
     global subscription_feed_mutex
+    global subscription_feed_update_progress
 
     if not CheckToken():
         return
@@ -218,6 +223,7 @@ def UpdateSubscriptionFeedWorker(duration = timedelta(weeks = 1)):
     rfc3339Cutoff = cutoff.isoformat('T') + 'Z'
 
     videos = []
+    channelsUpdated = 0
     # FIXME: this could potentially be sped up by threading the requests,
     # or some kind of async http shenanigans
     # You could also potentially avoid re-requesting videos that have
@@ -255,6 +261,9 @@ def UpdateSubscriptionFeedWorker(duration = timedelta(weeks = 1)):
 
             if offset is None:
                 break
+
+        channelsUpdated = channelsUpdated + 1
+        subscription_feed_update_progress = int((channelsUpdated * 100) / len(channelIds))
 
     videos.sort(reverse = True, key = lambda tup: tup[1])
     videoIds = [tup[0] for tup in videos]
@@ -311,9 +320,9 @@ def SubscriptionFeed(title, offset=0, refresh=0):
             key=Callback(SubscriptionFeed,
                 title=L('Subscription Feed'),
                 refresh=int(refresh) + 1),
-            title=u'%s%s%s' % (L('Updating ('),
-                SecondsToString(timeSinceRefreshStarted),
-                L(')')),
+            title=u'%s%d%s' % (L('Updating ('),
+                subscription_feed_update_progress,
+                L('%)')),
             thumb=ICONS['watchHistory']
         ))
 
