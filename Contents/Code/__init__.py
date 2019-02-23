@@ -317,18 +317,23 @@ def SubscriptionFeed(title, offset=0, refresh=0):
 
     UpdateSubscriptionFeed()
 
-    # If the thread is still alive, it means an update is in progress...
     if subscription_feed_thread is not None and subscription_feed_thread.isAlive():
-        # ...and we should let the user know about it
-        oc.add(DirectoryObject(
-            key=Callback(SubscriptionFeed,
-                title=L('Subscription Feed'),
-                refresh=int(refresh) + 1),
-            title=u'%s%d%s' % (L('Updating ('),
-                subscription_feed_update_progress,
-                L('%)')),
-            thumb=ICONS['watchHistory']
-        ))
+        # Give the update a little time to complete, in case it returns very
+        # quickly due to caching
+        subscription_feed_thread.join(2.0)
+
+        # If the thread is still alive, it means an update is in progress...
+        if subscription_feed_thread is not None and subscription_feed_thread.isAlive():
+            # ...and we should let the user know about it
+            oc.add(DirectoryObject(
+                key=Callback(SubscriptionFeed,
+                    title=L('Subscription Feed'),
+                    refresh=int(refresh) + 1),
+                title=u'%s%d%s' % (L('Updating ('),
+                    subscription_feed_update_progress,
+                    L('%)')),
+                thumb=ICONS['watchHistory']
+            ))
 
     videoIds = []
     subscription_feed_mutex.acquire()
