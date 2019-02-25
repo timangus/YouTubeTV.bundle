@@ -194,6 +194,7 @@ def UpdateSubscriptionFeedWorker(duration = timedelta(weeks = 1)):
 
     channelIds = []
     offset = None
+    subscription_feed_update_progress = 0
 
     while True:
         res = ApiRequest('subscriptions', ApiGetParams(
