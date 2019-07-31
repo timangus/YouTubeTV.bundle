@@ -14,7 +14,7 @@
 	<key>CFBundleSignature</key>
 	<string>hook</string>
 	<key>CFBundleVersion</key>
-	<string>4.13</string>
+	<string>4.14</string>
 
 	<key>PlexPluginVersionUrl</key>
 	<string>https://rebrand.ly/youtubetv</string>

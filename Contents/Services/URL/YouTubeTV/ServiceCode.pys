@@ -117,21 +117,22 @@ def NormalizeURL(url):
 def MetadataObjectForURL(url):
     item = Video.GetVideoData(url)
     meta = Video.MetaFromInfo(item)
+    details = JSON.ObjectFromString(meta['player_response'])
 
     if not meta:
         raise Ex.MediaNotAvailable
 
     return VideoClipObject(
-        title=u'%s' % meta['title'],
+        title=u'%s' % meta['title'] if 'title' in meta else details['videoDetails']['title'],
         rating_key=url.split('&')[0],
         summary=u'%s\n%s' % (
-            meta['author'],
-            item['description'] if 'description' in item else '',
+            meta['author'] if 'author' in meta else details['videoDetails']['author'],
+            item['description'] if 'description' in meta else details['videoDetails']['shortDescription'],
         ),
-        thumb=Video.GetThumb(meta['video_id']),
-        rating=(float(meta['avg_rating'] if 'avg_rating' in meta else 0)*2),
+        thumb=Video.GetThumb(meta['video_id'] if 'video_id' in meta else details['videoDetails']['videoId']),
+        rating=(float(meta['avg_rating'] if 'avg_rating' in meta else details['videoDetails']['averageRating'])*2),
         tags=(item['keywords'] if 'keywords' in item else '').split(','),
-        duration=int(meta['length_seconds'])*1000 if meta['length_seconds'] else None,
+        duration=int(meta['length_seconds'] if 'length_seconds' in meta else details['videoDetails']['lengthSeconds'])*1000,
         originally_available_at=Datetime.ParseDate(
             item['date_published']
         ) if 'date_published' in item else None,
@@ -160,6 +161,10 @@ def MediaObjectsForURL(url, definition='hd'):
 @indirect
 def PlayVideo(url, fmt):
     info = Video.GetVideoUrls(url)
+    Log.Debug('----- INFO -----')
+    Log.Debug(fmt)
+    Log.Debug(info)
+    Log.Debug('----- INFO END -----')
 
     fmt = int(fmt)
     if fmt not in info:
