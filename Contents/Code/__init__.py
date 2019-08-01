@@ -275,6 +275,7 @@ def UpdateSubscriptionFeedWorker(duration = timedelta(weeks = 1)):
 
     subscription_feed_mutex.acquire()
     try:
+        Dict['last_refresh_time'] = int(time())
         Data.SaveObject('subscription_feed', videoIds)
     finally:
         subscription_feed_mutex.release()
@@ -302,8 +303,6 @@ def UpdateSubscriptionFeed():
         # Start an update
         subscription_feed_thread = Thread(target=UpdateSubscriptionFeedWorker)
         subscription_feed_thread.start()
-        lastRefreshTime = now
-        Dict['last_refresh_time'] = lastRefreshTime
 
 @route(PREFIX + '/subscriptionfeed')
 def SubscriptionFeed(title, offset=0, refresh=0):
